@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter
 
-from scanner.models import ScanInput, ScanResponse, ScanError
-from scanner.core import run_scan, normalize
+from models import ScanInput, ScanResponse, ScanError
+from core import run_scan, normalize
 
 router = APIRouter()
 
