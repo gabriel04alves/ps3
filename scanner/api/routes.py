@@ -13,7 +13,7 @@ def health():
     return {"status": "ok"}
 
 
-@router.post("/scan", response_model=ScanResponse)
+@router.post("/scan", response_model=ScanResponse | ScanError)
 def scan_endpoint(payload: ScanInput):
     alvo = f"{payload.hostname}:{payload.port}"
 
