@@ -1,6 +1,13 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
+import yaml
 from sslyze import ScanCommandAttemptStatusEnum, RobotScanResultEnum
+
+# Tabela declarativa de regras de protocolo/cipher (auditável numa só visão).
+_RULES_PATH = Path(__file__).with_name("rules.yaml")
+with _RULES_PATH.open(encoding="utf-8") as _f:
+    _RULES = yaml.safe_load(_f)
 
 
 def _completed(attempt):
@@ -32,13 +39,8 @@ def normalize(scan) -> list:
 
 
 def _check_protocols(scan, findings: list):
-    protocolos_inseguros = [
-        ("ssl_2_0_cipher_suites", "SSLv2", "critical"),
-        ("ssl_3_0_cipher_suites", "SSLv3", "critical"),
-        ("tls_1_0_cipher_suites", "TLS 1.0", "high"),
-        ("tls_1_1_cipher_suites", "TLS 1.1", "high"),
-    ]
-    for attr, nome, sev in protocolos_inseguros:
+    for regra in _RULES["protocolos_inseguros"]:
+        attr, nome, sev = regra["attr"], regra["nome"], regra["severity"]
         res = _completed(getattr(scan, attr))
         if res and res.accepted_cipher_suites:
             _add(findings, f"proto_{attr}", "protocol",
@@ -48,7 +50,7 @@ def _check_protocols(scan, findings: list):
 
     tem_moderno = any(
         (_completed(getattr(scan, a)) and _completed(getattr(scan, a)).accepted_cipher_suites)
-        for a in ("tls_1_2_cipher_suites", "tls_1_3_cipher_suites")
+        for a in _RULES["protocolos_modernos"]
     )
     if not tem_moderno:
         _add(findings, "proto_no_modern", "protocol",
@@ -58,13 +60,11 @@ def _check_protocols(scan, findings: list):
 
 
 def _check_ciphers(scan, findings: list):
-    cipher_attrs = [
-        "ssl_2_0_cipher_suites", "ssl_3_0_cipher_suites",
-        "tls_1_0_cipher_suites", "tls_1_1_cipher_suites", "tls_1_2_cipher_suites",
-    ]
+    classes = _RULES["cipher_classes"]
+    key_min = _RULES["cipher_key_size_minimo"]
     ciphers_vistas = set()
 
-    for attr in cipher_attrs:
+    for attr in _RULES["cipher_origem"]:
         res = _completed(getattr(scan, attr))
         if not res:
             continue
@@ -76,31 +76,21 @@ def _check_ciphers(scan, findings: list):
             ciphers_vistas.add(nome)
             n = nome.upper()
 
-            if "NULL" in n or cs.is_anonymous:
-                _add(findings, f"cipher_null_{nome}", "cipher",
-                     f"Cipher sem criptografia/autenticação: {nome}",
-                     "Cipher anônima ou NULL não oferece confidencialidade.", "critical")
-            elif "RC4" in n:
-                _add(findings, f"cipher_rc4_{nome}", "cipher",
-                     f"Cipher fraca (RC4): {nome}",
-                     "RC4 é vulnerável e não deve ser utilizada.", "high")
-            elif "EXPORT" in n:
-                _add(findings, f"cipher_export_{nome}", "cipher",
-                     f"Cipher de exportação: {nome}",
-                     "Ciphers 'export' usam chaves curtas e são quebráveis.", "high")
-            elif "3DES" in n or "DES-CBC3" in n:
-                _add(findings, f"cipher_3des_{nome}", "cipher",
-                     f"Cipher legada (3DES): {nome}",
-                     "3DES é lenta e vulnerável (Sweet32).", "medium")
-            elif "MD5" in n:
-                _add(findings, f"cipher_md5_{nome}", "cipher",
-                     f"Cipher com MD5: {nome}",
-                     "MD5 é um algoritmo de hash quebrado.", "medium")
+            # Primeira classe cujo keyword casa (ou anônima) gera o achado.
+            for regra in classes:
+                casou = any(kw in n for kw in regra["keywords"])
+                if regra.get("anonymous") and cs.is_anonymous:
+                    casou = True
+                if casou:
+                    _add(findings, f"cipher_{regra['id']}_{nome}", "cipher",
+                         regra["title"].format(nome=nome),
+                         regra["detail"].format(nome=nome), regra["severity"])
+                    break
 
-            if cs.key_size and cs.key_size < 128:
+            if cs.key_size and cs.key_size < key_min["bits"]:
                 _add(findings, f"cipher_keysize_{nome}", "cipher",
-                     f"Chave simétrica fraca ({cs.key_size} bits): {nome}",
-                     "Tamanho de chave abaixo do recomendado (128 bits).", "high")
+                     key_min["title"].format(nome=nome, key_size=cs.key_size),
+                     key_min["detail"].format(nome=nome), key_min["severity"])
 
 
 def _check_certificate(scan, findings: list):

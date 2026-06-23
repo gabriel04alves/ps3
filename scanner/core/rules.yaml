@@ -1,0 +1,80 @@
+# Tabela de regras de detecção — protocolos e cipher suites
+#
+# Esta é a "fonte da verdade" declarativa da detecção determinística de protocolo/cipher.
+# O reviewer audita estas regras numa tabela única, sem ler código procedural.
+# (Certificado e vulnerabilidades permanecem como código explícito em normalizer.py,
+#  pois envolvem lógica imperativa — datas, cadeia de confiança, enums do sslyze.)
+#
+# severity_hint válido: critical | high | medium | low | info
+# Placeholders nos textos: {nome} = nome do protocolo ou da cipher suite.
+
+# ---------------------------------------------------------------------------
+# Protocolos obsoletos: se o atributo do scan tiver cipher suites aceitas,
+# gera um achado. attr = nome do atributo no objeto de scan do sslyze.
+# ---------------------------------------------------------------------------
+protocolos_inseguros:
+  - attr: ssl_2_0_cipher_suites
+    nome: SSLv2
+    severity: critical
+  - attr: ssl_3_0_cipher_suites
+    nome: SSLv3
+    severity: critical
+  - attr: tls_1_0_cipher_suites
+    nome: TLS 1.0
+    severity: high
+  - attr: tls_1_1_cipher_suites
+    nome: TLS 1.1
+    severity: high
+
+# Protocolos modernos aceitáveis. Se NENHUM estiver presente, gera achado "no_modern".
+protocolos_modernos:
+  - tls_1_2_cipher_suites
+  - tls_1_3_cipher_suites
+
+# ---------------------------------------------------------------------------
+# Cipher suites: de quais protocolos enumerar as ciphers aceitas.
+# ---------------------------------------------------------------------------
+cipher_origem:
+  - ssl_2_0_cipher_suites
+  - ssl_3_0_cipher_suites
+  - tls_1_0_cipher_suites
+  - tls_1_1_cipher_suites
+  - tls_1_2_cipher_suites
+
+# Classes de cipher fraca. Avaliadas EM ORDEM; a primeira regra cujo 'keywords'
+# casa (substring no nome em MAIÚSCULAS) gera o achado e interrompe (equivale ao elif).
+# anonymous: true => também casa quando cs.is_anonymous for verdadeiro.
+cipher_classes:
+  - id: "null"
+    keywords: [NULL]
+    anonymous: true
+    severity: critical
+    title: "Cipher sem criptografia/autenticação: {nome}"
+    detail: "Cipher anônima ou NULL não oferece confidencialidade."
+  - id: rc4
+    keywords: [RC4]
+    severity: high
+    title: "Cipher fraca (RC4): {nome}"
+    detail: "RC4 é vulnerável e não deve ser utilizada."
+  - id: export
+    keywords: [EXPORT]
+    severity: high
+    title: "Cipher de exportação: {nome}"
+    detail: "Ciphers 'export' usam chaves curtas e são quebráveis."
+  - id: 3des
+    keywords: [3DES, DES-CBC3]
+    severity: medium
+    title: "Cipher legada (3DES): {nome}"
+    detail: "3DES é lenta e vulnerável (Sweet32)."
+  - id: md5
+    keywords: [MD5]
+    severity: medium
+    title: "Cipher com MD5: {nome}"
+    detail: "MD5 é um algoritmo de hash quebrado."
+
+# Chave simétrica abaixo do limite (avaliada independentemente da classe acima).
+cipher_key_size_minimo:
+  bits: 128
+  severity: high
+  title: "Chave simétrica fraca ({key_size} bits): {nome}"
+  detail: "Tamanho de chave abaixo do recomendado (128 bits)."
