@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from sslyze import ScanCommandAttemptStatusEnum, RobotScanResultEnum
+from sslyze import ScanCommandAttemptStatusEnum
 
 # Tabela declarativa de regras de protocolo/cipher (auditável numa só visão).
 _RULES_PATH = Path(__file__).with_name("rules.yaml")
@@ -16,14 +16,18 @@ def _completed(attempt):
     return None
 
 
-def _add(findings: list, fid: str, category: str, title: str, detail: str, severity_hint: str):
-    findings.append({
-        "id": fid,
-        "category": category,
-        "title": title,
-        "detail": detail,
-        "severity_hint": severity_hint,
-    })
+def _add(
+    findings: list, fid: str, category: str, title: str, detail: str, severity_hint: str
+):
+    findings.append(
+        {
+            "id": fid,
+            "category": category,
+            "title": title,
+            "detail": detail,
+            "severity_hint": severity_hint,
+        }
+    )
 
 
 def normalize(scan) -> list:
@@ -43,20 +47,32 @@ def _check_protocols(scan, findings: list):
         attr, nome, sev = regra["attr"], regra["nome"], regra["severity"]
         res = _completed(getattr(scan, attr))
         if res and res.accepted_cipher_suites:
-            _add(findings, f"proto_{attr}", "protocol",
-                 f"Protocolo obsoleto habilitado: {nome}",
-                 f"O servidor aceita conexões via {nome}, um protocolo "
-                 f"considerado inseguro e que deveria ser desativado.", sev)
+            _add(
+                findings,
+                f"proto_{attr}",
+                "protocol",
+                f"Protocolo obsoleto habilitado: {nome}",
+                f"O servidor aceita conexões via {nome}, um protocolo "
+                f"considerado inseguro e que deveria ser desativado.",
+                sev,
+            )
 
     tem_moderno = any(
-        (_completed(getattr(scan, a)) and _completed(getattr(scan, a)).accepted_cipher_suites)
+        (
+            _completed(getattr(scan, a))
+            and _completed(getattr(scan, a)).accepted_cipher_suites
+        )
         for a in _RULES["protocolos_modernos"]
     )
     if not tem_moderno:
-        _add(findings, "proto_no_modern", "protocol",
-             "Ausência de TLS 1.2/1.3",
-             "O servidor não oferece TLS 1.2 nem TLS 1.3, os protocolos atuais recomendados.",
-             "high")
+        _add(
+            findings,
+            "proto_no_modern",
+            "protocol",
+            "Ausência de TLS 1.2/1.3",
+            "O servidor não oferece TLS 1.2 nem TLS 1.3, os protocolos atuais recomendados.",
+            "high",
+        )
 
 
 def _check_ciphers(scan, findings: list):
@@ -82,15 +98,25 @@ def _check_ciphers(scan, findings: list):
                 if regra.get("anonymous") and cs.is_anonymous:
                     casou = True
                 if casou:
-                    _add(findings, f"cipher_{regra['id']}_{nome}", "cipher",
-                         regra["title"].format(nome=nome),
-                         regra["detail"].format(nome=nome), regra["severity"])
+                    _add(
+                        findings,
+                        f"cipher_{regra['id']}_{nome}",
+                        "cipher",
+                        regra["title"].format(nome=nome),
+                        regra["detail"].format(nome=nome),
+                        regra["severity"],
+                    )
                     break
 
             if cs.key_size and cs.key_size < key_min["bits"]:
-                _add(findings, f"cipher_keysize_{nome}", "cipher",
-                     key_min["title"].format(nome=nome, key_size=cs.key_size),
-                     key_min["detail"].format(nome=nome), key_min["severity"])
+                _add(
+                    findings,
+                    f"cipher_keysize_{nome}",
+                    "cipher",
+                    key_min["title"].format(nome=nome, key_size=cs.key_size),
+                    key_min["detail"].format(nome=nome),
+                    key_min["severity"],
+                )
 
 
 def _check_certificate(scan, findings: list):
@@ -109,65 +135,89 @@ def _check_certificate(scan, findings: list):
             not_after = leaf.not_valid_after_utc
             not_before = leaf.not_valid_before_utc
             if not_after < agora:
-                _add(findings, "cert_expired", "certificate",
-                     "Certificado expirado",
-                     f"O certificado venceu em {not_after.date()}.", "critical")
+                _add(
+                    findings,
+                    "cert_expired",
+                    "certificate",
+                    "Certificado expirado",
+                    f"O certificado venceu em {not_after.date()}.",
+                    "critical",
+                )
             elif not_before > agora:
-                _add(findings, "cert_not_yet_valid", "certificate",
-                     "Certificado ainda não válido",
-                     f"O certificado só é válido a partir de {not_before.date()}.", "high")
+                _add(
+                    findings,
+                    "cert_not_yet_valid",
+                    "certificate",
+                    "Certificado ainda não válido",
+                    f"O certificado só é válido a partir de {not_before.date()}.",
+                    "high",
+                )
         except Exception:
             pass
 
         try:
             if leaf.subject == leaf.issuer:
-                _add(findings, "cert_self_signed", "certificate",
-                     "Certificado autoassinado",
-                     "Emissor e titular são iguais; não há cadeia de confiança.", "high")
+                _add(
+                    findings,
+                    "cert_self_signed",
+                    "certificate",
+                    "Certificado autoassinado",
+                    "Emissor e titular são iguais; não há cadeia de confiança.",
+                    "high",
+                )
         except Exception:
             pass
 
     problemas_validacao = [
-        pv.validation_error for pv in dep.path_validation_results
+        pv.validation_error
+        for pv in dep.path_validation_results
         if pv.validation_error is not None
     ]
-    if problemas_validacao and len(problemas_validacao) == len(dep.path_validation_results):
-        _add(findings, "cert_untrusted", "certificate",
-             "Certificado não confiável",
-             f"A cadeia não validou em nenhuma trust store. Detalhe: {problemas_validacao[0]}",
-             "high")
+    if problemas_validacao and len(problemas_validacao) == len(
+        dep.path_validation_results
+    ):
+        _add(
+            findings,
+            "cert_untrusted",
+            "certificate",
+            "Certificado não confiável",
+            f"A cadeia não validou em nenhuma trust store. Detalhe: {problemas_validacao[0]}",
+            "high",
+        )
 
     if dep.verified_chain_has_sha1_signature:
-        _add(findings, "cert_sha1", "certificate",
-             "Assinatura SHA-1 na cadeia",
-             "SHA-1 está obsoleto para assinatura de certificados.", "medium")
+        _add(
+            findings,
+            "cert_sha1",
+            "certificate",
+            "Assinatura SHA-1 na cadeia",
+            "SHA-1 está obsoleto para assinatura de certificados.",
+            "medium",
+        )
+
+
+def _vuln_disparou(op: str, valor, regra: dict) -> bool:
+    if op == "is_true":
+        return bool(valor)
+    if op == "is_none":
+        return valor is None
+    if op == "in_enum":
+        return getattr(valor, "name", None) in regra["values"]
+    raise ValueError(f"Operador de vulnerabilidade desconhecido: {op!r}")
 
 
 def _check_vulnerabilities(scan, findings: list):
-    hb = _completed(scan.heartbleed)
-    if hb and hb.is_vulnerable_to_heartbleed:
-        _add(findings, "vuln_heartbleed", "configuration", "Vulnerável a Heartbleed",
-             "Permite leitura de memória do servidor (CVE-2014-0160).", "critical")
-
-    ccs = _completed(scan.openssl_ccs_injection)
-    if ccs and ccs.is_vulnerable_to_ccs_injection:
-        _add(findings, "vuln_ccs", "configuration", "Vulnerável a CCS Injection",
-             "Permite interceptação da comunicação (CVE-2014-0224).", "critical")
-
-    robot = _completed(scan.robot)
-    if robot and robot.robot_result in (
-        RobotScanResultEnum.VULNERABLE_STRONG_ORACLE,
-        RobotScanResultEnum.VULNERABLE_WEAK_ORACLE,
-    ):
-        _add(findings, "vuln_robot", "configuration", "Vulnerável a ROBOT",
-             "Ataque de oráculo Bleichenbacher contra RSA.", "high")
-
-    comp = _completed(scan.tls_compression)
-    if comp and comp.supports_compression:
-        _add(findings, "vuln_crime", "configuration", "Compressão TLS habilitada (CRIME)",
-             "Compressão TLS permite o ataque CRIME.", "medium")
-
-    headers = _completed(scan.http_headers)
-    if headers is not None and headers.strict_transport_security_header is None:
-        _add(findings, "cfg_no_hsts", "configuration", "Cabeçalho HSTS ausente",
-             "Sem Strict-Transport-Security, o cliente pode ser rebaixado para HTTP.", "low")
+    for regra in _RULES["vulnerabilidades"]:
+        res = _completed(getattr(scan, regra["result"]))
+        if res is None:
+            continue
+        valor = getattr(res, regra["attr"], None)
+        if _vuln_disparou(regra["op"], valor, regra):
+            _add(
+                findings,
+                regra["id"],
+                "configuration",
+                regra["title"],
+                regra["detail"],
+                regra["severity"],
+            )

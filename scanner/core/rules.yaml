@@ -46,7 +46,7 @@ cipher_origem:
 # anonymous: true => também casa quando cs.is_anonymous for verdadeiro.
 cipher_classes:
   - id: "null"
-    keywords: [NULL]
+    keywords: ["NULL"]
     anonymous: true
     severity: critical
     title: "Cipher sem criptografia/autenticação: {nome}"
@@ -78,3 +78,52 @@ cipher_key_size_minimo:
   severity: high
   title: "Chave simétrica fraca ({key_size} bits): {nome}"
   detail: "Tamanho de chave abaixo do recomendado (128 bits)."
+
+# ---------------------------------------------------------------------------
+# Vulnerabilidades / configuração. Cada regra navega até um resultado de scan
+# (result = nome do atributo no objeto de scan do sslyze), lê um atributo (attr)
+# e aplica um operador (op). Se o comando de scan não tiver COMPLETADO, a regra
+# é ignorada. Todas geram achados da categoria "configuration".
+#
+# Operadores suportados:
+#   is_true  => dispara quando o atributo é verdadeiro (flag booleana de vuln)
+#   is_none  => dispara quando o atributo é None (ex.: cabeçalho ausente)
+#   in_enum  => dispara quando o .name do atributo está na lista 'values'
+# ---------------------------------------------------------------------------
+vulnerabilidades:
+  - id: vuln_heartbleed
+    result: heartbleed
+    attr: is_vulnerable_to_heartbleed
+    op: is_true
+    severity: critical
+    title: "Vulnerável a Heartbleed"
+    detail: "Permite leitura de memória do servidor (CVE-2014-0160)."
+  - id: vuln_ccs
+    result: openssl_ccs_injection
+    attr: is_vulnerable_to_ccs_injection
+    op: is_true
+    severity: critical
+    title: "Vulnerável a CCS Injection"
+    detail: "Permite interceptação da comunicação (CVE-2014-0224)."
+  - id: vuln_robot
+    result: robot
+    attr: robot_result
+    op: in_enum
+    values: [VULNERABLE_STRONG_ORACLE, VULNERABLE_WEAK_ORACLE]
+    severity: high
+    title: "Vulnerável a ROBOT"
+    detail: "Ataque de oráculo Bleichenbacher contra RSA."
+  - id: vuln_crime
+    result: tls_compression
+    attr: supports_compression
+    op: is_true
+    severity: medium
+    title: "Compressão TLS habilitada (CRIME)"
+    detail: "Compressão TLS permite o ataque CRIME."
+  - id: cfg_no_hsts
+    result: http_headers
+    attr: strict_transport_security_header
+    op: is_none
+    severity: low
+    title: "Cabeçalho HSTS ausente"
+    detail: "Sem Strict-Transport-Security, o cliente pode ser rebaixado para HTTP."
