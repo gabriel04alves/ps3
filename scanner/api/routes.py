@@ -22,7 +22,15 @@ def scan_endpoint(payload: ScanInput):
     except Exception as e:
         return ScanError(target=alvo, reachable=False, error=str(e), findings=[])
 
-    findings = normalize(scan_result)
+    try:
+        findings = normalize(scan_result)
+    except Exception as e:
+        return ScanError(
+            target=alvo,
+            reachable=True,
+            error=f"Falha ao normalizar o resultado da varredura: {e}",
+            findings=[],
+        )
 
     resumo = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
     for f in findings:
