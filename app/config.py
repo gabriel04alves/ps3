@@ -24,8 +24,9 @@ def _get(chave: str, padrao: str = "") -> str:
 # --- Scanner (microsserviço FastAPI) ---------------------------------------
 SCANNER_URL: str = _get("SCANNER_URL", "http://localhost:8000").rstrip("/")
 
-# A varredura é remota e síncrona (~30–90 s). Timeout folgado conforme o README.
-SCAN_TIMEOUT_S: int = int(_get("SCAN_TIMEOUT_S", "120"))
+# A varredura é remota e síncrona (~1–3 min, podendo ultrapassar em alvos com
+# muitos protocolos legados ativos). Timeout folgado; pode ser sobrescrito via env var.
+SCAN_TIMEOUT_S: int = int(_get("SCAN_TIMEOUT_S", "300"))
 HEALTH_TIMEOUT_S: int = int(_get("HEALTH_TIMEOUT_S", "5"))
 
 # --- Gemini (classificação de risco a jusante) -----------------------------

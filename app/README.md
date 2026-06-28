@@ -63,7 +63,7 @@ preencha, **ou** defina variáveis de ambiente de mesmo nome:
 | `SCANNER_URL`    | `http://localhost:8000`   | URL do microsserviço Scanner               |
 | `GEMINI_API_KEY` | _(vazio)_                 | Chave do Gemini; vazio → heurística        |
 | `GEMINI_MODEL`   | `gemini-2.5-flash`        | Modelo Gemini                              |
-| `SCAN_TIMEOUT_S` | `120`                     | Timeout da varredura (a varredura é lenta) |
+| `SCAN_TIMEOUT_S` | `300`                     | Timeout da varredura (a varredura é lenta) |
 
 ## Como rodar
 
@@ -88,5 +88,6 @@ streamlit run Scanner_Web_Server.py
 Acesse em `http://localhost:8501`. Informe um alvo na barra lateral (ou use um
 alvo de teste) e clique em **Iniciar varredura**.
 
-> A varredura é remota, real e síncrona (~30–90 s). Não execute testes
-> destrutivos; use apenas alvos autorizados ou o `badssl.com`.
+> A varredura é remota, real e síncrona (~1–3 min, podendo ultrapassar em
+> alvos com vários protocolos legados ativos). Não execute testes destrutivos;
+> use apenas alvos autorizados ou o `badssl.com`.

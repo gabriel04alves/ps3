@@ -141,7 +141,7 @@ def executar(hostname: str, port: int) -> None:
         return
 
     try:
-        with st.spinner(f"Varrendo {hostname}:{port}… (pode levar 30–90 s)"):
+        with st.spinner(f"Varrendo {hostname}:{port}… (pode levar 1–3 min)"):
             resultado = scanner_client.scan(hostname, port)
     except ScannerError as exc:
         st.error(str(exc))
