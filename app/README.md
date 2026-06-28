@@ -18,8 +18,10 @@ Usuário → Streamlit → (Scanner /scan, Gemini) → Streamlit (dashboard)
   correção** e **recomendações** em PT-BR.
 - Apresenta o painel: métricas por severidade, gráfico de severidade e de
   categoria, e a lista de achados com faixa colorida.
-- Exporta o **relatório** de auditoria em Markdown (vulnerabilidades, riscos,
-  recomendações).
+- Exporta o **relatório** de auditoria em **Markdown e PDF**
+  (vulnerabilidades, riscos, recomendações).
+- **Cacheia as varreduras** em `app/.cache/`: as últimas 20 ficam disponíveis
+  na sidebar para recarregar sem refazer o scan (sslyze leva 30–90 s).
 - Atalhos para alvos de teste do `badssl.com` (ambiente controlado).
 
 > Sem `GEMINI_API_KEY` configurada, o app **continua funcional**: a classificação
@@ -33,11 +35,13 @@ app/
 ├── config.py                 # configuração central (URLs, chaves, paleta)
 ├── services/
 │   ├── scanner_client.py     # cliente HTTP do microsserviço Scanner
-│   └── gemini_client.py      # camada de IA (classificação de risco)
+│   ├── gemini_client.py      # camada de IA (classificação de risco)
+│   └── cache.py              # cache em disco das últimas varreduras
 ├── components/
 │   ├── styles.py             # CSS / identidade visual
 │   ├── findings_view.py      # métricas, gráficos e cards de achados
-│   └── report.py             # geração do relatório Markdown
+│   └── report.py             # geração de relatório Markdown e PDF
+├── .cache/                   # gerado em runtime; ignorado pelo git
 └── .streamlit/
     └── secrets.toml.example  # modelo de configuração (copie p/ secrets.toml)
 ```

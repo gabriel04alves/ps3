@@ -189,3 +189,6 @@ pip-selfcheck.json
 .claude
 # Streamlit secrets (nunca comitar credenciais)
 .streamlit/secrets.toml
+
+# Cache local de varreduras do dashboard
+app/.cache/

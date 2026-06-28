@@ -11,12 +11,16 @@ resumo, gráficos, lista de achados e relatório baixável.
 
 from __future__ import annotations
 
+import time
+from datetime import datetime, timezone
+
 import streamlit as st
 
 from config import (
     APP_TITLE,
     APP_ICON,
     SCANNER_URL,
+    SEVERITY_COLORS,
     SEVERITY_LABELS_PT,
     TEST_TARGETS,
 )
@@ -24,6 +28,7 @@ from components import styles, findings_view, report
 from services import scanner_client
 from services.scanner_client import ScannerError
 from services import gemini_client
+from services import cache
 
 st.set_page_config(page_title=APP_TITLE, page_icon=APP_ICON, layout="wide")
 styles.inject()
@@ -70,12 +75,63 @@ def barra_lateral() -> tuple[str, int, bool]:
                 st.rerun()
 
         st.divider()
+        _secao_recentes()
+
+        st.divider()
         usando_ia = bool(gemini_client.GEMINI_API_KEY)
         st.caption(
             f"Classificação de risco: {'IA (Gemini)' if usando_ia else 'heurística'}"
         )
 
     return hostname, int(port), disparar
+
+
+def _secao_recentes() -> None:
+    recentes = cache.listar()
+    st.caption(f"Varreduras recentes ({len(recentes)}):")
+
+    if not recentes:
+        st.caption("_Nenhuma varredura em cache ainda._")
+        return
+
+    for entrada in recentes[:8]:
+        slug = entrada["slug"]
+        target = entrada["target"]
+        sev = entrada.get("overall_risk", "info")
+        total = entrada.get("total_findings", 0)
+        cor = SEVERITY_COLORS.get(sev, "#6b7280")
+        nivel = SEVERITY_LABELS_PT.get(sev, sev)
+        quando = _tempo_relativo(entrada.get("ts", 0))
+
+        if st.button(target, key=f"r_{slug}", use_container_width=True):
+            st.session_state["carregar_cache"] = slug
+            st.rerun()
+        st.markdown(
+            f'<div style="margin:-0.4rem 0 0.5rem 0.25rem;font-size:0.72rem;'
+            f'color:#8b97a7;font-family:\'IBM Plex Mono\',monospace;">'
+            f'<span style="color:{cor};font-weight:600;">{nivel}</span>'
+            f' · {total} achado(s) · {quando}</div>',
+            unsafe_allow_html=True,
+        )
+
+    if st.button("Limpar cache", key="cache_clear", use_container_width=True):
+        cache.limpar()
+        for k in ("resultado", "risco"):
+            st.session_state.pop(k, None)
+        st.rerun()
+
+
+def _tempo_relativo(ts: float) -> str:
+    if not ts:
+        return "—"
+    delta = time.time() - ts
+    if delta < 60:
+        return "agora"
+    if delta < 3600:
+        return f"há {int(delta // 60)} min"
+    if delta < 86400:
+        return f"há {int(delta // 3600)} h"
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
 def executar(hostname: str, port: int) -> None:
@@ -105,6 +161,18 @@ def executar(hostname: str, port: int) -> None:
 
     st.session_state["resultado"] = resultado
     st.session_state["risco"] = risco
+    cache.salvar(resultado, risco)
+
+
+def carregar_do_cache(slug: str) -> None:
+    dados = cache.carregar(slug)
+    if dados is None:
+        st.warning("Entrada de cache não encontrada ou corrompida.")
+        return
+    resultado, risco = dados
+    st.session_state["resultado"] = resultado
+    st.session_state["risco"] = risco
+    st.toast(f"Varredura carregada do cache: {resultado.target}", icon="📦")
 
 
 def painel() -> None:
@@ -172,13 +240,34 @@ def painel() -> None:
     st.divider()
     md = report.gerar_markdown(resultado, risco)
     nome = resultado.target.replace(":", "_").replace(".", "-")
-    st.download_button(
-        "Baixar relatório (Markdown)",
-        data=md,
-        file_name=f"relatorio_{nome}.md",
-        mime="text/markdown",
-        use_container_width=True,
-    )
+
+    col_md, col_pdf = st.columns(2)
+    with col_md:
+        st.download_button(
+            "Baixar relatório (Markdown)",
+            data=md,
+            file_name=f"relatorio_{nome}.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+    with col_pdf:
+        try:
+            pdf_bytes = report.gerar_pdf(resultado, risco)
+            st.download_button(
+                "Baixar relatório (PDF)",
+                data=pdf_bytes,
+                file_name=f"relatorio_{nome}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        except Exception as exc:
+            st.button(
+                "PDF indisponível",
+                disabled=True,
+                use_container_width=True,
+                help=f"Falha ao gerar PDF: {exc}",
+            )
+
     with st.expander("Prévia do relatório"):
         st.markdown(md)
 
@@ -187,8 +276,10 @@ def main() -> None:
     cabecalho()
     hostname, port, disparar = barra_lateral()
 
-    # Alvo de teste escolhido na sidebar tem prioridade
-    if "alvo_teste" in st.session_state:
+    if "carregar_cache" in st.session_state:
+        slug = st.session_state.pop("carregar_cache")
+        carregar_do_cache(slug)
+    elif "alvo_teste" in st.session_state:
         host_t, port_t = st.session_state.pop("alvo_teste")
         executar(host_t, port_t)
     elif disparar:

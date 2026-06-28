@@ -1,1 +1,1 @@
-"""Serviços de integração: cliente do Scanner e camada de IA (Gemini)."""
+"""Serviços de integração: cliente do Scanner, camada de IA (Gemini) e cache."""
