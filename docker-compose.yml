@@ -1,0 +1,43 @@
+services:
+  scanner:
+    build:
+      context: ./scanner
+    restart: unless-stopped
+    environment:
+      API_PREFIX: /api
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.ps3-scanner-api.rule=Host(`scanner.lsx.li`) && PathPrefix(`/api`)
+      - traefik.http.routers.ps3-scanner-api.priority=100
+      - traefik.http.routers.ps3-scanner-api.entrypoints=websecure
+      - traefik.http.routers.ps3-scanner-api.tls=true
+      - traefik.http.services.ps3-scanner-api.loadbalancer.server.port=8000
+
+  app:
+    build:
+      context: ./app
+    restart: unless-stopped
+    depends_on:
+      scanner:
+        condition: service_healthy
+    environment:
+      SCANNER_URL: http://scanner:8000
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      SCAN_TIMEOUT_S: ${SCAN_TIMEOUT_S:-300}
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.ps3-app.rule=Host(`scanner.lsx.li`)
+      - traefik.http.routers.ps3-app.priority=1
+      - traefik.http.routers.ps3-app.entrypoints=websecure
+      - traefik.http.routers.ps3-app.tls=true
+      - traefik.http.services.ps3-app.loadbalancer.server.port=8501
+
+networks:
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:-dokploy-network}
