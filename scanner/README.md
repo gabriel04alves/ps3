@@ -118,8 +118,9 @@ Executa a varredura SSL/TLS contra um alvo e retorna os achados de segurança.
 | `hostname` | string | sim         | —      | Host a auditar (sem esquema/URL) |
 | `port`     | int    | não         | `443`  | Porta TLS do alvo                |
 
-> **Tempo de resposta: ~30–90 s.** A varredura é remota e real (sslyze abre conexões TLS
-> contra o alvo). A requisição é **síncrona** — configure o timeout do cliente para ≥ 120 s.
+> **Tempo de resposta: ~1–3 min** (pode ultrapassar em alvos com vários protocolos legados
+> ativos). A varredura é remota e real (sslyze abre conexões TLS contra o alvo). A
+> requisição é **síncrona** — configure o timeout do cliente para ≥ 300 s.
 
 **Resposta `200` — alvo varrido** — [`ScanResponse`](#scanresponse)
 
@@ -532,7 +533,7 @@ Exemplo: sinalizar uma nova vulnerabilidade que o sslyze já testa.
 
 ### Como testar uma regra nova
 
-A varredura real leva ~30–90 s; para iterar rápido, exercite o normalizador com um resultado
+A varredura real leva ~1–3 min; para iterar rápido, exercite o normalizador com um resultado
 **falso** (sem rede), validando a regra de forma isolada:
 
 ```python
