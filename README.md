@@ -41,7 +41,7 @@ por **IA** com classificação de risco, priorização de correções e recomend
 - [Referência da API](#-referência-da-api)
 - [Modelos de dados](#-modelos-de-dados)
 - [Catálogo de detecção](#-catálogo-de-detecção)
-- [Camada de IA (Gemini)](#-camada-de-ia-gemini)
+- [Análise de risco: IA ou heurística](#-análise-de-risco-ia-ou-heurística)
 - [Cache e relatórios](#-cache-e-relatórios)
 - [Deploy em produção](#-deploy-em-produção)
 - [Segurança e limitações](#-segurança-e-limitações)
@@ -210,6 +210,7 @@ Clientes ramificam pelo campo `reachable`, **não** pelo status HTTP. Ver
 ```
 ps3/
 ├── docker-compose.yml          # sobe os dois serviços (com labels Traefik)
+├── .env.example                # modelo de variáveis de ambiente (copie p/ .env)
 ├── README.md                   # este arquivo — visão geral do projeto
 │
 ├── scanner/                    # ── microsserviço de detecção (FastAPI + sslyze)
@@ -264,8 +265,9 @@ Sobe o scanner e o app juntos, já em rede. O app aguarda o scanner ficar _healt
 # 1. Clone o repositório
 git clone <url-do-repo> ps3 && cd ps3
 
-# 2. (opcional) exporte sua chave do Gemini
-export GEMINI_API_KEY="sua-chave-aqui"
+# 2. Crie o .env a partir do modelo e preencha (ao menos GEMINI_API_KEY, opcional)
+cp .env.example .env
+#   O Docker Compose lê o .env da raiz automaticamente.
 
 # 3. Suba os serviços
 docker compose up --build
@@ -328,30 +330,64 @@ Acesse <http://localhost:8501>.
 
 ## ⚙️ Configuração
 
-O dashboard resolve cada valor olhando **primeiro variáveis de ambiente, depois `st.secrets`**
-(`app/config.py`). Para execução manual, copie o modelo:
+Toda a configuração é feita por **variáveis de ambiente**. O projeto traz um
+[`.env.example`](.env.example) na raiz com todas as chaves documentadas — o ponto de partida
+recomendado:
 
 ```bash
-cp app/.streamlit/secrets.toml.example app/.streamlit/secrets.toml
-# edite e preencha GEMINI_API_KEY (opcional)
+cp .env.example .env
+# edite o .env e preencha ao menos GEMINI_API_KEY (opcional, mas recomendado)
 ```
 
-| Chave              | Padrão                  | Descrição                           |
-| ------------------ | ----------------------- | ----------------------------------- |
-| `SCANNER_URL`      | `http://localhost:8000` | URL do microsserviço Scanner        |
-| `GEMINI_API_KEY`   | _(vazio)_               | Chave do Gemini; vazio → heurística |
-| `GEMINI_MODEL`     | `gemini-2.5-flash`      | Modelo Gemini                       |
-| `SCAN_TIMEOUT_S`   | `300`                   | Timeout da varredura (segundos)     |
-| `HEALTH_TIMEOUT_S` | `5`                     | Timeout do health check do scanner  |
+O mesmo `.env` serve para os dois modos de execução:
 
-**Configuração do scanner (variáveis de ambiente):**
+- **Com Docker** — o Docker Compose lê o `.env` da raiz automaticamente e injeta os valores nos serviços.
+- **Sem Docker (local)** — o `app/config.py` carrega o `.env` da raiz automaticamente via
+  `python-dotenv` (incluído no `app/requirements.txt`). Basta ter o `.env` preenchido; não é preciso
+  `export` nem `source`.
 
-| Variável            | Descrição                                                        |
-| ------------------- | ---------------------------------------------------------------- |
-| `API_PREFIX`        | Prefixo de rota (ex.: `/api`) para servir atrás de proxy reverso |
-| `FASTAPI_ROOT_PATH` | Root path do FastAPI quando montado sob um subcaminho            |
+A ordem de precedência ao resolver cada valor é: **variáveis já definidas no ambiente** (ex.:
+injetadas pelo Docker) › **`.env`** › **`app/.streamlit/secrets.toml`** (`st.secrets`) › padrão.
+Ou seja, uma variável exportada no shell sobrepõe o `.env`, que por sua vez é uma alternativa ao
+`secrets.toml`.
 
-> 🔒 **Nunca comite** o `app/.streamlit/secrets.toml` real — já está no `.gitignore`.
+### 🤖 Chave da API do Gemini
+
+A classificação de risco por IA usa o **Google Gemini**. Para habilitá-la:
+
+1. Gere uma chave em **<https://aistudio.google.com/apikey>**.
+2. Defina `GEMINI_API_KEY` no `.env` (ou exporte no shell / coloque no `secrets.toml`).
+3. (Opcional) Ajuste `GEMINI_MODEL` — o padrão é `gemini-2.5-flash`.
+
+> Sem `GEMINI_API_KEY`, **o app continua 100% funcional**: a análise cai para uma heurística
+> determinística (maior severidade presente) e exibe a tag "Análise heurística" no lugar de
+> "Análise por IA".
+
+### Variáveis do dashboard (`app/`)
+
+| Variável           | Padrão                  | Descrição                                                  |
+| ------------------ | ----------------------- | ---------------------------------------------------------- |
+| `GEMINI_API_KEY`   | _(vazio)_               | Chave do Google Gemini; vazio → heurística determinística  |
+| `GEMINI_MODEL`     | `gemini-2.5-flash`      | Modelo Gemini usado na análise de risco                    |
+| `SCANNER_URL`      | `http://localhost:8000` | URL do microsserviço Scanner (no compose: `http://scanner:8000`) |
+| `SCAN_TIMEOUT_S`   | `300`                   | Timeout da varredura (segundos) — a varredura é lenta      |
+| `HEALTH_TIMEOUT_S` | `5`                     | Timeout do health check do scanner exibido na sidebar      |
+
+### Variáveis do scanner (`scanner/`)
+
+| Variável            | Padrão      | Descrição                                                        |
+| ------------------- | ----------- | ---------------------------------------------------------------- |
+| `API_PREFIX`        | _(vazio)_   | Prefixo de rota (ex.: `/api`) para servir atrás de proxy reverso |
+| `FASTAPI_ROOT_PATH` | _(vazio)_   | Root path do FastAPI quando montado sob um subcaminho            |
+
+### Variáveis de infraestrutura (Docker Compose)
+
+| Variável          | Padrão            | Descrição                                        |
+| ----------------- | ----------------- | ------------------------------------------------ |
+| `TRAEFIK_NETWORK` | `dokploy-network` | Nome da rede externa do proxy reverso (Traefik)  |
+
+> 🔒 **Nunca comite** o `.env` real nem o `app/.streamlit/secrets.toml` — ambos estão no
+> `.gitignore`. Versione apenas o [`.env.example`](.env.example).
 
 ---
 
@@ -521,24 +557,42 @@ armadilhas do YAML e passo a passo para adicionar/testar uma regra — está em
 
 ---
 
-## 🤖 Camada de IA (Gemini)
+## 🧠 Análise de risco: IA ou heurística
 
-O scanner **nunca** usa IA. O enriquecimento acontece no app
+A **detecção** dos achados é sempre determinística (o scanner nunca usa IA). O que varia é a
+camada de **análise de risco a jusante** — a que classifica a postura geral, prioriza e recomenda.
+Ela opera em **dois modos**, e o app escolhe automaticamente qual usar; o painel sempre indica com
+uma tag qual esteve em vigor.
+
+| Aspecto                | 🤖 **Análise por IA** (Gemini)                          | 📐 **Análise heurística** (fallback)                        |
+| ---------------------- | ------------------------------------------------------- | ----------------------------------------------------------- |
+| **Quando é usada**     | `GEMINI_API_KEY` configurada **e** a chamada bem-sucedida | Chave ausente **ou** falha/erro na chamada à IA           |
+| **Postura de risco**   | Inferida pelo modelo, com justificativa contextual      | Maior severidade presente entre os achados                  |
+| **Priorização**        | Ordem argumentada pelo modelo (o que corrigir primeiro) | Ordem por severidade (`critical` → `info`)                  |
+| **Recomendações**      | Redigidas pela IA, acionáveis e contextualizadas em PT-BR | Deriva do campo `detail` de cada achado                   |
+| **Tag no painel**      | "Análise por IA"                                        | "Análise heurística"                                        |
+| **Requer internet/chave** | Sim                                                  | Não — 100% local e determinístico                           |
+
+Ambos os modos produzem a **mesma estrutura** de saída (postura geral + prioridades), então o
+dashboard e o relatório funcionam de forma idêntica nos dois casos.
+
+### Como funciona a análise por IA
+
+O enriquecimento acontece no app
 ([`app/services/gemini_client.py`](app/services/gemini_client.py)) e recebe os achados **já
-detectados** para:
+detectados** para: (1) atribuir a **postura de risco geral** com justificativa, (2) **priorizar** os
+achados e (3) redigir **recomendações acionáveis** em PT-BR. O prompt instrui o modelo a **não
+inventar vulnerabilidades** — apenas classificar e priorizar o que foi fornecido — e a responder
+**exclusivamente em JSON** (`temperature=0.2`, `response_mime_type: application/json`).
 
-1. Atribuir a **postura de risco geral** do alvo (com justificativa);
-2. **Priorizar** os achados (o que corrigir primeiro e por quê);
-3. Redigir **recomendações acionáveis** em PT-BR.
+### Como funciona o fallback heurístico
 
-O prompt instrui o modelo a **não inventar vulnerabilidades** — apenas classificar e priorizar o
-que foi fornecido — e a responder **exclusivamente em JSON** (`temperature=0.2`, `response_mime_type:
-application/json`).
+Se a IA não estiver disponível, o app cai em `_fallback_heuristico` de forma transparente e
+**permanece 100% funcional**: a postura geral vira a maior severidade presente e as prioridades
+seguem a ordem de severidade. É determinístico, não depende de rede nem de chave, e é o que roda
+por padrão quando você não configura o `GEMINI_API_KEY`.
 
-**Degradação elegante:** se `GEMINI_API_KEY` estiver ausente **ou** a chamada falhar, o app cai
-num **fallback heurístico** (`_fallback_heuristico`): a postura geral vira a maior severidade
-presente e as prioridades seguem a ordem de severidade. O app permanece 100% funcional — apenas
-exibe a tag "Análise heurística" em vez de "Análise por IA".
+> Ver [Configuração › Chave da API do Gemini](#-chave-da-api-do-gemini) para habilitar o modo IA.
 
 ---
 
