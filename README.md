@@ -530,6 +530,42 @@ Resumo por família de achado (catálogo completo com todos os IDs em
 
 **Severidades**, em ordem decrescente: `critical` › `high` › `medium` › `low` › `info`.
 
+### Alinhamento com guias da indústria
+
+As detecções e severidades do `normalizer` **não são arbitrárias**: cada uma reflete um consenso
+documentado de guias e normas amplamente reconhecidos. O conjunto foi mantido deliberadamente
+**conservador** — só entram achados de alto consenso e baixo falso-positivo — para que a saída seja
+confiável e defensável. As principais referências são:
+
+- **[Qualys SSL Labs — SSL Server Rating Guide](https://github.com/ssllabs/research/wiki/SSL-Server-Rating-Guide)** — critérios de nota (protocolos, troca de chaves, força de cipher) e capping por fraquezas conhecidas.
+- **[Mozilla — Server Side TLS / TLS configuration recommendations](https://wiki.mozilla.org/Security/Server_Side_TLS)** — perfis *Modern / Intermediate / Old* que definem o que é aceitável hoje.
+- **IETF RFCs** — [RFC 8996](https://datatracker.ietf.org/doc/html/rfc8996) (depreciação de TLS 1.0/1.1), [RFC 7568](https://datatracker.ietf.org/doc/html/rfc7568) (proibição de SSLv3), [RFC 6176](https://datatracker.ietf.org/doc/html/rfc6176) (proibição de SSLv2), [RFC 6797](https://datatracker.ietf.org/doc/html/rfc6797) (HSTS).
+
+Como cada família se justifica:
+
+| Detecção                        | Severidade   | Justificativa e referência                                                                                       |
+| ------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------- |
+| **SSLv2 / SSLv3 habilitados**   | `critical`   | Criptografia quebrada (DROWN, POODLE). Proibidos por RFC 6176/7568; SSL Labs reprova (nota F).                   |
+| **TLS 1.0 / 1.1 habilitados**   | `high`       | Depreciados pela IETF em 2021 (RFC 8996); fora dos perfis Mozilla atuais.                                        |
+| **Ausência de TLS 1.2/1.3**     | `high`       | TLS 1.2 é o mínimo dos perfis Mozilla Intermediate/Modern; sem ele o servidor não negocia criptografia atual.   |
+| **Cipher NULL / anônima**       | `critical`   | Sem confidencialidade/autenticação — excluída por SSL Labs e por todos os perfis Mozilla.                       |
+| **RC4**                         | `high`       | Quebrada (RFC 7465 proíbe RC4 em TLS); banida pelos guias.                                                       |
+| **EXPORT**                      | `high`       | Chaves curtas propositais — base dos ataques FREAK/Logjam.                                                       |
+| **3DES**                        | `medium`     | Sweet32 (CVE-2016-2183); removida dos perfis modernos.                                                           |
+| **MD5**                         | `medium`     | Hash quebrado; inaceitável para MAC/assinatura.                                                                  |
+| **Chave simétrica < 128 bits**  | `high`       | Abaixo do mínimo recomendado por SSL Labs / Mozilla.                                                             |
+| **Heartbleed**                  | `critical`   | CVE-2014-0160 — leitura de memória do servidor.                                                                  |
+| **CCS Injection**               | `critical`   | CVE-2014-0224 — interceptação da comunicação.                                                                    |
+| **ROBOT**                       | `high`       | Oráculo Bleichenbacher contra RSA (2017).                                                                        |
+| **CRIME (compressão TLS)**      | `medium`     | CVE-2012-4929 — vazamento via compressão; compressão TLS desaconselhada.                                         |
+| **HSTS ausente**                | `low`        | Higiene de configuração (RFC 6797); ausência permite downgrade para HTTP.                                        |
+| **Certificado expirado / não-válido / autoassinado / cadeia não confiável / SHA-1** | `critical`–`medium` | Estados que invalidam a confiança da cadeia; SHA-1 em assinatura é obsoleto (deprecado por navegadores). |
+
+> ⚖️ A `severity_hint` é uma **dica** alinhada a esse consenso — a classificação de risco final
+> pode recontextualizar ([Análise por IA](#-análise-de-risco-ia-ou-heurística)). O detalhamento
+> completo dessa seleção está em
+> [`scanner/README.md`](scanner/README.md#como-as-regras-atuais-foram-selecionadas).
+
 ### Como as regras funcionam
 
 A detecção separa **duas** definições:
