@@ -67,6 +67,15 @@ def barra_lateral() -> tuple[str, int, bool]:
             "Iniciar varredura", type="primary", use_container_width=True, disabled=not no_ar
         )
 
+        st.warning(
+            "**Aviso — uso acadêmico.** Esta ferramenta faz parte de um "
+            "trabalho acadêmico. Execute varreduras apenas em **ambientes "
+            "controlados** (ex.: `badssl.com`) ou em alvos com **autorização "
+            "explícita do proprietário**. Varredura sem consentimento pode "
+            "violar leis de crimes cibernéticos.",
+            icon="⚠️",
+        )
+
         st.divider()
         st.caption("Alvos de teste (badssl.com) — ambiente controlado:")
         for host, p, desc in TEST_TARGETS:

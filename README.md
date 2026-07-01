@@ -20,6 +20,15 @@ por **IA** com classificação de risco, priorização de correções e recomend
 
 ---
 
+> ### ⚠️ Aviso — uso acadêmico
+>
+> Esta ferramenta faz parte de um **trabalho acadêmico**. Execute varreduras
+> apenas em **ambientes controlados** (ex.: [`badssl.com`](https://badssl.com))
+> ou em alvos com **autorização explícita do proprietário**. Varredura sem
+> consentimento pode violar leis de crimes cibernéticos.
+
+---
+
 ## 📑 Sumário
 
 - [Sobre o projeto](#-sobre-o-projeto)
