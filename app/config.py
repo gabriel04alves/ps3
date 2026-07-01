@@ -7,6 +7,18 @@ microsserviço Scanner e a chave do Gemini, sem espalhar literais pelo código.
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+# Carrega o `.env` da raiz do projeto (um nível acima de app/) para execução
+# local sem Docker. `override=False`: variáveis já definidas no ambiente (ex.:
+# injetadas pelo Docker Compose) têm precedência sobre o arquivo. Se o
+# python-dotenv não estiver instalado, segue sem erro (o app lê do ambiente).
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+except Exception:
+    pass
 
 try:
     import streamlit as st
