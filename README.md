@@ -38,6 +38,8 @@ por **IA** com classificação de risco, priorização de correções e recomend
   - [Opção B — Sem Docker (manual)](#opção-b--sem-docker-manual)
 - [Configuração](#-configuração)
 - [Como usar](#-como-usar)
+  - [Fluxograma de uso](#fluxograma-de-uso)
+  - [Passo a passo](#passo-a-passo)
 - [Referência da API](#-referência-da-api)
 - [Modelos de dados](#-modelos-de-dados)
 - [Catálogo de detecção](#-catálogo-de-detecção)
@@ -392,6 +394,44 @@ A classificação de risco por IA usa o **Google Gemini**. Para habilitá-la:
 ---
 
 ## 🖱 Como usar
+
+### Fluxograma de uso
+
+O diagrama abaixo resume a jornada do usuário no dashboard — do carregamento da página à
+exportação do relatório —, incluindo os principais pontos de decisão (scanner online, recarga de
+cache, alvo acessível e IA vs. heurística):
+
+```mermaid
+flowchart TD
+    Start([Abrir dashboard :8501]) --> Health{Scanner online?}
+    Health -- Não --> Offline[Sidebar mostra 'offline'<br/>botão 'Iniciar' desabilitado]
+    Offline -. subir scanner .-> Health
+    Health -- Sim --> Choice{Como iniciar?}
+
+    Choice -- Recarregar do cache --> Cache[Carrega varredura salva<br/>sem refazer o scan]
+    Cache --> Panel
+
+    Choice -- Alvo de teste badssl --> Run
+    Choice -- Digitar hostname + porta --> Valida{Hostname preenchido?}
+    Valida -- Não --> Warn[Aviso: informe um hostname]
+    Warn --> Choice
+    Valida -- Sim --> Run[POST /scan · varredura TLS<br/>~1–3 min]
+
+    Run --> Reach{reachable == true?}
+    Reach -- Não --> Erro[Erro: alvo inacessível<br/>ou falha ao processar]
+    Erro --> Choice
+
+    Reach -- Sim --> IA{GEMINI_API_KEY<br/>configurada e OK?}
+    IA -- Sim --> AI[Análise por IA Gemini<br/>risco + prioridades + recomendações]
+    IA -- Não --> Heur[Análise heurística<br/>maior severidade + ordem por severidade]
+    AI --> Save[Salva no cache das últimas 20]
+    Heur --> Save
+    Save --> Panel[Painel: postura de risco, métricas,<br/>gráficos, achados e prioridades]
+
+    Panel --> Report[Baixar relatório<br/>Markdown / PDF]
+```
+
+### Passo a passo
 
 1. Abra o dashboard (<http://localhost:8501>). A sidebar mostra o **status do scanner** (online/offline).
 2. Informe um **hostname** (sem `https://`) e a **porta** (padrão `443`) — ou clique em um
