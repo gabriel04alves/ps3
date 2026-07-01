@@ -22,7 +22,6 @@ _CSS = f"""
     font-family: 'IBM Plex Sans', -apple-system, sans-serif;
   }}
 
-  .stApp {{ background: #0f1419; }}
 
   /* Cabeçalho do app */
   .ssl-hero {{
@@ -30,10 +29,7 @@ _CSS = f"""
     padding: 0.2rem 0 0.2rem 1rem;
     margin-bottom: 0.5rem;
   }}
-  .ssl-hero h1 {{
-    font-size: 1.65rem; font-weight: 700; color: #e8edf2;
-    margin: 0; letter-spacing: -0.01em;
-  }}
+
   .ssl-hero .sub {{
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.8rem; color: #8b97a7; margin-top: 0.25rem;
