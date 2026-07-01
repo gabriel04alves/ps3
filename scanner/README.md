@@ -23,6 +23,7 @@ uma lista normalizada de achados de segurança, já classificados por severidade
   - [Endpoints](#endpoints)
     - [`GET /health`](#get-health)
     - [`POST /scan`](#post-scan)
+  - [Da resposta crua à tratada](#da-resposta-crua-à-tratada)
   - [Modelos de dados](#modelos-de-dados)
     - [`ScanInput`](#scaninput)
     - [`ScanResponse`](#scanresponse)
@@ -181,6 +182,131 @@ Erro padrão de validação do FastAPI (ex.: `hostname` ausente, `port` não num
   ]
 }
 ```
+
+---
+
+## Da resposta crua à tratada
+
+O que o cliente recebe **não** é o que o `sslyze` produz. Entre os dois há uma etapa de
+**normalização determinística** (`scanner/core/normalizer.py`) que traduz o objeto bruto e
+verboso da varredura numa lista enxuta de achados acionáveis. Entender essa transformação ajuda a
+depurar detecções e a estender as regras.
+
+### O pipeline
+
+```
+run_scan()            normalize()                       routes.py
+  sslyze     ─────►   rules.yaml + regras de cert  ─────►  ScanResponse
+(objeto bruto)        (dict cru por achado)               (contrato JSON)
+```
+
+1. **`run_scan()`** (`core/scanner.py`) executa o `sslyze` e devolve o `scan_result` — um objeto
+   Python rico, com um *attempt* por comando de varredura (protocolos, ciphers, cert, cada vuln).
+2. **`normalize()`** (`core/normalizer.py`) percorre esse objeto aplicando as regras do
+   `rules.yaml` (+ a lógica de certificado) e emite uma lista de **dicts** — um por achado.
+3. **`routes.py`** conta os achados por severidade (`summary`), acrescenta `target`/`scanned_at`
+   e serializa tudo no modelo Pydantic [`ScanResponse`](#scanresponse) — o JSON final.
+
+### Como é a resposta **crua** (sslyze)
+
+O `scan_result` é um objeto, não JSON. Simplificado, para um alvo com TLS 1.0 habilitado e
+certificado expirado, a forma relevante é assim (a maior parte dos campos foi omitida — o objeto
+real tem centenas de atributos):
+
+```python
+ServerScanResult(
+    scan_status=ServerScanStatusEnum.COMPLETED,
+    scan_result=AllScanCommandsAttempts(
+        # cada protocolo é um "attempt" com status + result
+        tls_1_0_cipher_suites=TlsScanAttempt(
+            status=ScanCommandAttemptStatusEnum.COMPLETED,
+            result=CipherSuitesScanResult(
+                accepted_cipher_suites=[
+                    AcceptedCipherSuite(
+                        cipher_suite=CipherSuite(name="TLS_RSA_WITH_AES_128_CBC_SHA",
+                                                 key_size=128, is_anonymous=False),
+                        ...
+                    ),
+                ],
+            ),
+        ),
+        tls_1_2_cipher_suites=TlsScanAttempt(status=COMPLETED, result=...),
+        certificate_info=CertInfoScanAttempt(
+            status=ScanCommandAttemptStatusEnum.COMPLETED,
+            result=CertificateInfoScanResult(
+                certificate_deployments=[
+                    CertificateDeployment(
+                        received_certificate_chain=[
+                            Certificate(not_valid_after_utc=datetime(2015, 4, 12, ...),
+                                        subject=..., issuer=...),
+                        ],
+                        path_validation_results=[...],
+                        verified_chain_has_sha1_signature=False,
+                    ),
+                ],
+            ),
+        ),
+        heartbleed=ScanCommandAttempt(status=COMPLETED,
+                                      result=HeartbleedScanResult(is_vulnerable_to_heartbleed=False)),
+        # ... um attempt por comando: robot, tls_compression, session_renegotiation, etc.
+    ),
+)
+```
+
+Características da forma crua:
+
+- É **orientada a capacidade**, não a problema: lista *tudo* que o servidor aceita (todas as
+  ciphers, todos os protocolos), sem julgar o que é inseguro.
+- Cada comando vem embrulhado num *attempt* com `status` — pode ter **falhado** individualmente
+  (`ERROR`), e aí `result` é `None`. É o helper `_completed()` que blinda esse caso.
+- Os dados são **estruturais** (datas, tamanhos de chave, flags booleanas), sem severidade,
+  título ou texto em PT-BR.
+
+### Como **entregamos** a versão tratada
+
+A normalização reduz o objeto acima aos achados que importam, já com `id` estável, `category`,
+severidade e texto legível:
+
+```json
+{
+  "target": "expired.badssl.com:443",
+  "scanned_at": "2026-06-21T18:00:00Z",
+  "reachable": true,
+  "summary": { "critical": 1, "high": 1, "medium": 0, "low": 0, "info": 0 },
+  "total_findings": 2,
+  "findings": [
+    {
+      "id": "proto_tls_1_0_cipher_suites",
+      "category": "protocol",
+      "title": "Protocolo obsoleto habilitado: TLS 1.0",
+      "detail": "O servidor aceita conexões via TLS 1.0, um protocolo considerado inseguro e que deveria ser desativado.",
+      "severity_hint": "high"
+    },
+    {
+      "id": "cert_expired",
+      "category": "certificate",
+      "title": "Certificado expirado",
+      "detail": "O certificado venceu em 2015-04-12.",
+      "severity_hint": "critical"
+    }
+  ]
+}
+```
+
+### O que a normalização faz (resumo)
+
+| Crua (sslyze)                                           | Tratada (`ScanResponse`)                                  |
+|---------------------------------------------------------|-----------------------------------------------------------|
+| Objeto Python com *attempts* + `status`                 | JSON plano, pronto para serializar                        |
+| Lista **tudo** que o servidor aceita                    | Só o que é **problema** (achado)                          |
+| `tls_1_0_cipher_suites.accepted_cipher_suites != []`    | `proto_tls_1_0_cipher_suites` (severidade `high`)         |
+| `not_valid_after_utc < agora`                           | `cert_expired` (severidade `critical`)                    |
+| Sem severidade, sem texto                               | `severity_hint` + `title`/`detail` em PT-BR               |
+| Sem agregação                                           | `summary` (contagem por severidade) + `total_findings`    |
+
+> A varredura é **passiva e não destrutiva** dos dois lados: a resposta crua já é só leitura do
+> que o alvo expõe, e a normalização apenas a interpreta — nunca inventa um achado que não decorra
+> diretamente do objeto do sslyze. Ver [Como as regras são definidas](#como-as-regras-são-definidas).
 
 ---
 
